@@ -7,15 +7,19 @@
 #
 set -e
 set +x
-yum update -y
-yum groupinstall -y "Minimal Install" "Development Tools" --quiet
-yum install wget -y
-
-wget http://copr.fedoraproject.org/coprs/openscapmaint/openscap-latest/repo/epel-7/openscapmaint-openscap-latest-epel-7.repo -O /etc/yum.repos.d/openscapmaint-openscap-latest-epel-7.repo
-yum install vim openscap* scap-security-guide python-pip python-devel git epel-release -y
-pip install flask Twisted supervisor
+if [ ! -e /opt/rebooted ]; then
+  yum update -y --quiet
+  yum groupinstall -y "Minimal Install" "Development Tools" --quiet
+  yum install wget vim -y
+  wget http://copr.fedoraproject.org/coprs/openscapmaint/openscap-latest/repo/epel-7/openscapmaint-openscap-latest-epel-7.repo -O /etc/yum.repos.d/openscapmaint-openscap-latest-epel-7.repo
+  yum install vim openscap* scap-security-guide python-pip python-devel git epel-release -y
+  pip install flask Twisted supervisor
+  touch /opt/rebooted
+  reboot
+fi
 
 sudo service oscapd restart
+
 cd /opt
 git clone git://github.com/mvazquezc/oscap-daemon-api.git
 cd oscap-daemon-api
