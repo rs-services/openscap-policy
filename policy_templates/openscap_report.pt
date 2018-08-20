@@ -1,0 +1,101 @@
+name "OpenSCAP Reporting Policy"
+rs_pt_ver 20180301
+type "policy"
+short_description "Pulls the report from instances"
+long_description "Version: 1.0"
+severity "low"
+category "Security"
+
+permission "perm_instances" do
+  label "Permissions for instances"
+  actions "rs_cm.index", "rs_cm.show"
+  resources "rs_cm.instances"
+end
+
+
+parameter "param_email" do
+  type "list"
+  label "Email addresses of the recipients you wish to notify"
+  min_length 1
+end
+
+parameter "param_instance_tag_list" do
+  type "list"
+  label "Instance tags used to filter instances that must validate policy (e.g.: rs_monitoring:resize=1)"
+  min_length 1
+  default ["openscap:scan=completed"]
+end
+
+auth "auth_rs", type: "rightscale"
+
+resources "clouds", type: "rs_cm.clouds"
+
+resources "instances", type: "rs_cm.instances" do
+  iterate @clouds  
+  cloud_href href(iter_item)
+  filter do
+    state "operational"
+  end
+  tags all($param_instance_tag_list)
+end
+
+datasource "ds_instances" do
+  iterate @instances
+  field "name", val(iter_item, "name")
+  field "resource_uid", val(iter_item,  "resource_uid")
+  field "public_ip", jmes_path(iter_item, "public_ip_addresses[0]")
+end
+
+datasource "ds_instances_tasks" do
+  iterate($ds_instances)
+  request do
+    verb "GET"
+    scheme "http"
+    host val(iter_item, "public_ip")
+    path "/tasks"
+  end
+  result do
+    encoding "json"
+    collect jmes_path(response, "tasks") do
+      field "name", val(iter_item, "name")
+      field "resource_uid", val(iter_item,  "resource_uid")
+      field "public_ip", jmes_path(iter_item, "public_ip")
+      field "title", jmes_path(col_item, "Title")
+      field "id", jmes_path(col_item, "id")
+      field "results" do
+        collect jmes_path(col_item, "results") do
+          field "taskResultStatus", jmes_path(col_item, "taskResultStatus")
+          field "taskResulttimestamp", jmes_path(col_item, "taskResulttimestamp")
+          field "taskResultId", jmes_path(col_item,"taskResultId")
+        end
+      end
+    end
+  end
+end
+
+escalation "report_policy_templates_update" do
+  email $param_email
+end
+
+policy "upload_policy_templates" do
+  validate_each $ds_instances_tasks do
+    summary_template "{{ rs_project_name }} (Account ID: {{ rs_project_id }}): {{ len data }} Instances Scanned"
+    detail_template <<-EOS
+# Policy Templates Updated
+| Name | Resource UID | Public IP | Result ID | Result Timestamp | Result Status | Report | Guide |
+| ---- | ------------ | --------- | --------- | ---------------- | ------------- | ------ | ----- |
+{{ range data -}}
+{{ $name := .name -}}
+{{ $resource_uid := .resource_uid -}}
+{{ $public_ip := .public_ip -}}
+{{ $id := .id -}}
+{{ range $i, $e := .results -}}
+| {{ $name }} | {{$resource_uid}} | {{$public_ip}} | {{ $e.taskResultId }} | {{ $e.taskResulttimestamp }} | {{ $e.taskResultStatus }} | http://{{ $public_ip }}/tasks/{{$id}}/result/{{ $e.taskResultId }} | http://{{ $public_ip }}/tasks/{{$id}}/guide |
+{{ end -}}
+{{ end -}}
+EOS
+
+    escalate $report_policy_templates_update
+    check gt(0,1)
+  end
+end

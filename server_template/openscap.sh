@@ -72,7 +72,7 @@ cat <<EOF> /tmp/newtask.json
     "taskSSG":"/usr/share/xml/scap/ssg/content/ssg-centos7-ds.xml",
     "taskTailoring":"",
     "taskProfileId":"xccdf_org.ssgproject.content_profile_standard",
-    "taskOnlineRemediation":"-0",
+    "taskOnlineRemediation":"0",
     "taskScheduleNotBefore":"",
     "taskScheduleRepeatAfter":""
 }
